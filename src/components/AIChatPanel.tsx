@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
+import { useSearchSession } from '@/hooks/use-search-session';
 import { Bot, Loader2, RefreshCw, Send, Sparkles, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -259,6 +260,8 @@ export default function AIChatPanel({
     }
     return 'ai-chat-general';
   }, [context?.title, context?.year, context?.type]);
+
+  const { getSessionId, resetSession } = useSearchSession(storageKey);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role: 'assistant', content: welcomeMessage },
@@ -538,6 +541,8 @@ export default function AIChatPanel({
 
       // 清除消息并重置为欢迎消息
       console.log('视频上下文变化，清除聊天记录');
+      // 消息历史已清空，重返同一影片也应开启新的搜索会话。
+      resetSession();
       clearToolChain();
       setMessages([{ role: 'assistant', content: welcomeMessage }]);
 
@@ -546,7 +551,7 @@ export default function AIChatPanel({
 
       prevStorageKeyRef.current = storageKey;
     }
-  }, [storageKey, welcomeMessage]); // 监听 storageKey 变化
+  }, [storageKey, welcomeMessage, resetSession]); // 监听 storageKey 变化
 
   // 通知父组件 streaming 状态变化
   useEffect(() => {
@@ -624,6 +629,7 @@ export default function AIChatPanel({
           message: userMessage,
           context,
           history: requestHistory,
+          searchSessionId: getSessionId(),
         }),
         signal: abortController.signal,
       });
@@ -852,6 +858,7 @@ export default function AIChatPanel({
 
     // 清除sessionStorage
     sessionStorage.removeItem(storageKey);
+    resetSession();
 
     // 重置消息为欢迎消息
     clearToolChain();
@@ -1042,27 +1049,44 @@ export default function AIChatPanel({
           {/* 快捷提示 */}
           {messages.length === 1 && !isStreaming && (
             <div className='mt-3 flex flex-wrap gap-2'>
-              <button
-                onClick={() => setInput('推荐一些高分电影')}
-                className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-              >
-                推荐高分电影
-              </button>
-              <button
-                onClick={() => setInput('最近有什么新电影上映？')}
-                className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-              >
-                最新上映
-              </button>
-              {context?.title && (
-                <button
-                  onClick={() =>
-                    setInput(`${context.title}讲的是什么故事？`)
-                  }
-                  className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-                >
-                  剧情介绍
-                </button>
+              {context?.title ? (
+                <>
+                  <button
+                    onClick={() =>
+                      setInput(`${context.title}讲的是什么故事？`)
+                    }
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    剧情介绍
+                  </button>
+                  <button
+                    onClick={() => setInput(`${context.title}这部作品评价怎么样？`)}
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    这部作品的评价
+                  </button>
+                  <button
+                    onClick={() => setInput(`${context.title}有没有续集？`)}
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    有没有续集
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setInput('推荐一些高分电影')}
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    推荐高分电影
+                  </button>
+                  <button
+                    onClick={() => setInput('最近有什么新电影上映？')}
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    最新上映
+                  </button>
+                </>
               )}
             </div>
           )}
@@ -1253,27 +1277,44 @@ export default function AIChatPanel({
           {/* 快捷提示 */}
           {messages.length === 1 && !isStreaming && (
             <div className='mt-3 flex flex-wrap gap-2'>
-              <button
-                onClick={() => setInput('推荐一些高分电影')}
-                className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-              >
-                推荐高分电影
-              </button>
-              <button
-                onClick={() => setInput('最近有什么新电影上映？')}
-                className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-              >
-                最新上映
-              </button>
-              {context?.title && (
-                <button
-                  onClick={() =>
-                    setInput(`${context.title}讲的是什么故事？`)
-                  }
-                  className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-                >
-                  剧情介绍
-                </button>
+              {context?.title ? (
+                <>
+                  <button
+                    onClick={() =>
+                      setInput(`${context.title}讲的是什么故事？`)
+                    }
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    剧情介绍
+                  </button>
+                  <button
+                    onClick={() => setInput(`${context.title}这部作品评价怎么样？`)}
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    这部作品的评价
+                  </button>
+                  <button
+                    onClick={() => setInput(`${context.title}有没有续集？`)}
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    有没有续集
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setInput('推荐一些高分电影')}
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    推荐高分电影
+                  </button>
+                  <button
+                    onClick={() => setInput('最近有什么新电影上映？')}
+                    className='rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                  >
+                    最新上映
+                  </button>
+                </>
               )}
             </div>
           )}

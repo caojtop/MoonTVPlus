@@ -13,6 +13,10 @@ import {
   normalizeScriptSearchResults,
   normalizeScriptSources,
 } from '@/lib/source-script';
+import {
+  resolveTVBoxBridgeSites,
+  runTVBoxBridgeSearch,
+} from '@/lib/tvbox-bridge.server';
 import { yellowWords } from '@/lib/yellow';
 
 export const runtime = 'nodejs';
@@ -25,7 +29,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
-  const includeSpecialSources = searchParams.get('special') === '1';
+  const specialOnly = searchParams.get('special') === '1';
   const privateOnly = searchParams.get('privateOnly') === '1';
 
   if (!query) {
@@ -46,11 +50,15 @@ export async function GET(request: NextRequest) {
   const config = await getConfig();
   const apiSites = privateOnly
     ? []
-    : await getAvailableApiSites(authInfo.username, includeSpecialSources);
-  const [canAccessOpenList, canAccessEmby] = await Promise.all([
+    : await getAvailableApiSites(authInfo.username, specialOnly);
+  const [hasOpenListPermission, hasEmbyPermission] = await Promise.all([
     hasFeaturePermission(authInfo.username, 'private_library'),
     hasFeaturePermission(authInfo.username, 'emby'),
   ]);
+  // 特殊源入口（/under）只搜影视源：私人影库（OpenList/Emby）不参与搜索。
+  // 否则 0 个特殊源时也会去搜私人影库，既串味又要白等 20s 超时。
+  const canAccessOpenList = hasOpenListPermission && !specialOnly;
+  const canAccessEmby = hasEmbyPermission && !specialOnly;
 
   // 创建权重映射表
   const weightMap = new Map<string, number>();
@@ -243,27 +251,57 @@ export async function GET(request: NextRequest) {
     })
   );
 
+  // TVBox 桥接源：桥接一次聚合请求跑完全部站点，这里只做收集。
+  // 桥接不可达时静默降级为空结果。
+  const bridgeSites = privateOnly
+    ? []
+    : await resolveTVBoxBridgeSites(authInfo.username, specialOnly).catch(
+        (error) => {
+          console.warn('[Search] 获取 TVBox 桥接站点失败:', error);
+          return [];
+        }
+      );
+
+  const bridgePromise: Promise<any[]> =
+    bridgeSites.length > 0
+      ? (async () => {
+          const collected: any[] = [];
+          await runTVBoxBridgeSearch({
+            sites: bridgeSites,
+            keyword: query,
+            onSource: ({ results }) => {
+              collected.push(...results);
+            },
+          });
+          return collected;
+        })()
+      : Promise.resolve([]);
+
   try {
     const allResults = await Promise.all([
       openlistPromise,
       ...embyPromises,
       ...searchPromises,
       ...scriptPromises,
+      bridgePromise,
     ]);
 
-    // 分离结果：第一个是 openlist，接下来是 emby 结果，最后是 api 结果
+    // 分离结果：第一个是 openlist，接下来是 emby 结果，最后是 api / 脚本 / tvbox 结果
     // 添加安全检查，确保即使某个结果处理出错也不影响其他结果
     const openlistResults = Array.isArray(allResults[0]) ? allResults[0] : [];
     const embyResultsArray = allResults.slice(1, 1 + embyPromises.length);
     const apiResults = allResults.slice(1 + embyPromises.length, 1 + embyPromises.length + searchPromises.length);
-    const scriptResults = allResults.slice(1 + embyPromises.length + searchPromises.length);
+    const scriptStart = 1 + embyPromises.length + searchPromises.length;
+    const scriptResults = allResults.slice(scriptStart, scriptStart + scriptPromises.length);
+    const bridgeResults = allResults.slice(scriptStart + scriptPromises.length);
 
     // 合并所有 Emby 结果，添加安全检查
     const embyResults = embyResultsArray.filter(Array.isArray).flat();
     const apiResultsFlat = apiResults.filter(Array.isArray).flat();
     const scriptResultsFlat = scriptResults.filter(Array.isArray).flat();
+    const bridgeResultsFlat = bridgeResults.filter(Array.isArray).flat();
 
-    let flattenedResults = [...openlistResults, ...embyResults, ...apiResultsFlat, ...scriptResultsFlat];
+    let flattenedResults = [...openlistResults, ...embyResults, ...apiResultsFlat, ...scriptResultsFlat, ...bridgeResultsFlat];
 
     flattenedResults = flattenedResults.map((result) => ({
       ...result,
