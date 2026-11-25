@@ -153,6 +153,7 @@ import Toast, { ToastProps } from '@/components/Toast';
 import VideoCard from '@/components/VideoCard';
 
 import { useDownload } from '@/contexts/DownloadContext';
+import TranscodeButton from '@/components/TranscodeButton';
 
 // 扩展 HTMLVideoElement 类型以支持 hls 属性
 declare global {
@@ -5197,6 +5198,30 @@ function PlayPageClient() {
     setExternalPlayerAdBlock(!externalPlayerAdBlock);
   };
 
+    // ---------------- 省流转码 ----------------
+  const transcodeActive = videoUrl.includes('/api/tc?');
+  const transcodeOriginalRef = useRef<string | null>(null);
+
+  // 取「未经代理包装」的真地址：detail 里的这一集就是原始地址
+  const rawEpisodeUrl = (() => {
+    const ep = detail?.episodes?.[currentEpisodeIndex];
+    if (ep && /^https?:\/\//i.test(ep)) return ep;
+    if (/^https?:\/\//i.test(videoUrl)) return videoUrl;
+    return '';
+  })();
+
+  const handleTranscodeSwitch = (next: string) => {
+    const t = Number(artPlayerRef.current?.currentTime) || 0;
+    resumeTimeRef.current = t > 1 ? t : null;
+    if (!transcodeActive) {
+      transcodeOriginalRef.current = videoUrl; // 记住原地址，用于切回
+      setVideoUrl(next);
+      return;
+    }
+    setVideoUrl(transcodeOriginalRef.current || next);
+    transcodeOriginalRef.current = null;
+  };
+  // -------------------------------------------
   // Wake Lock 相关函数
   const requestWakeLock = async () => {
     try {
@@ -12302,7 +12327,17 @@ function PlayPageClient() {
                           </span>
                         </button>
                       </div>
-
+                      {/* 省流播放（转 480p，约 0.9Mbps） */}
+                      <TranscodeButton
+                        url={rawEpisodeUrl}
+                        active={transcodeActive}
+                        onSwitch={handleTranscodeSwitch}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200 shadow-sm hover:shadow-md cursor-pointer border flex-shrink-0 ${
+                          transcodeActive
+                            ? 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white border-emerald-400'
+                            : 'bg-white hover:bg-gray-100 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'
+                        }`}
+                      />
                       {/* 去广告开关 */}
                       <button
                         onClick={toggleToolbarAdBlock}
