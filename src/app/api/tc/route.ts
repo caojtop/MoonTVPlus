@@ -15,9 +15,14 @@ import { NextRequest } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
-const TRANSCODE_URL = (process.env.TRANSCODE_URL || '').replace(/\/$/, '');
+// 兜底默认值：wrangler 的 [vars] 没注入也能直接工作。
+// 要换入口只改这一行，或者在 Cloudflare 面板 / VARS 里覆盖。
+const DEFAULT_TRANSCODE_URL = 'https://tc.910168.xyz:8443';
+
+const TRANSCODE_URL = (process.env.TRANSCODE_URL || DEFAULT_TRANSCODE_URL).replace(/\/$/, '');
 const PROFILE = process.env.TRANSCODE_PROFILE || '1m';
-const ENABLED = (process.env.ENABLE_TRANSCODE || 'false') === 'true';
+// 默认开启：只有显式写成 false 才关闭，避免变量没注入时静默失效
+const ENABLED = (process.env.ENABLE_TRANSCODE || 'true') !== 'false';
 const TOKEN = process.env.TRANSCODE_TOKEN || '';
 
 function json(data: unknown, status = 200) {
@@ -44,7 +49,11 @@ export async function GET(req: NextRequest) {
   if (source.startsWith(TRANSCODE_URL)) return Response.redirect(source, 302);
   if (!/\.m3u8(\?|#|$)/i.test(source)) return Response.redirect(source, 302);
 
-  let target = `${TRANSCODE_URL}/play?q=${encodeURIComponent(q)}&u=${encodeURIComponent(source)}`;
+  let target = `${TRANSCODE_URL}/play?q=${encodeURIComponent(q)}`;
+  // 起转位置（秒）：有就透传给网关，网关用 -ss 定位，不必从 0 秒转到这里
+  const t0 = Math.max(0, parseInt(req.nextUrl.searchParams.get('t0') || '0', 10) || 0);
+  if (t0 > 0) target += `&t0=${t0}`;
+  target += `&u=${encodeURIComponent(source)}`;
   if (TOKEN) target += `&t=${encodeURIComponent(TOKEN)}`;
 
   return new Response(null, {
