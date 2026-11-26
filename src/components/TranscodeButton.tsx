@@ -4,9 +4,9 @@
  * 省流播放按钮
  * 落点：src/components/TranscodeButton.tsx（注意是 src/components，不是 src/app/components）
  *
- * 受控组件：是否已开启由父组件用 active 传入，避免换集/换源后状态错乱。
- * 点击「省流播放」时先请求一次 /api/tc 预热（网关会在这次请求里启动 ffmpeg），
- * 再通知父组件切源，用户就不会对着黑屏等首片。
+ * 只做展示与点击：拼「不带 t0 的基础地址」，t0 由父组件的 handleTranscodeSwitch
+ * 从 artPlayerRef.current.currentTime 取出并补上（跟页面保存播放进度用的是同一个来源）。
+ * 这样组件不依赖任何额外 prop，避免 prop 传不进来导致的静默失效。
  */
 
 import { useState } from 'react';
@@ -18,8 +18,6 @@ interface Props {
   active: boolean;
   /** 父组件执行真实切源，next 为要设置的新地址 */
   onSwitch: (next: string) => void | Promise<void>;
-  /** 点击时取当前播放秒数，用于让网关从这一秒起转；不传则从头转 */
-  getPosition?: () => number;
   /** 档位，默认 1m（480p / 约 0.9Mbps） */
   profile?: string;
   /** 与页面工具栏其它按钮保持一致的样式 */
@@ -30,7 +28,6 @@ export default function TranscodeButton({
   url,
   active,
   onSwitch,
-  getPosition,
   profile = '1m',
   className = '',
 }: Props) {
@@ -48,20 +45,10 @@ export default function TranscodeButton({
       if (active) {
         await onSwitch(url);
       } else {
-        // 从当前位置起转：网关用 -ss 直接定位，不必从 0 秒转到这里
-        //const t0 = Math.max(0, Math.floor(Number(getPosition?.() || 0)));
-        const pos = getPosition?.();
-        console.log("[DEBUG] getPosition raw return:", pos);
-        const t0 = Math.max(0, Math.floor(Number(pos ?? 0)));
-        console.log("[DEBUG] final t0:", t0);
-        const next =
-          `/api/tc?q=${encodeURIComponent(profile)}` +
-          (t0 > 0 ? `&t0=${t0}` : '') +
-          `&url=${encodeURIComponent(url)}`;
-        // 预热：等网关吐出首个分片（3–8 秒，慢时更久），再切源
-        const res = await fetch(next, { cache: 'no-store' });
-        if (!res.ok && !res.redirected) throw new Error('gateway');
-        await onSwitch(next);
+        // 不带 t0：父组件补上，并负责预热 + 切源，本组件不碰 artPlayerRef
+        await onSwitch(
+          `/api/tc?q=${encodeURIComponent(profile)}&url=${encodeURIComponent(url)}`
+        );
       }
     } catch {
       setTip('切换失败');
