@@ -49,7 +49,11 @@ export default function TranscodeButton({
         await onSwitch(url);
       } else {
         // 从当前位置起转：网关用 -ss 直接定位，不必从 0 秒转到这里
-        const t0 = Math.max(0, Math.floor(Number(getPosition?.() || 0)));
+        //const t0 = Math.max(0, Math.floor(Number(getPosition?.() || 0)));
+        const pos = getPosition?.();
+        console.log("[DEBUG] getPosition raw return:", pos);
+        const t0 = Math.max(0, Math.floor(Number(pos ?? 0)));
+        console.log("[DEBUG] final t0:", t0);
         const next =
           `/api/tc?q=${encodeURIComponent(profile)}` +
           (t0 > 0 ? `&t0=${t0}` : '') +
