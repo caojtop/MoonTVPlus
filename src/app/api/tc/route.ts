@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 
 // 兜底默认值：wrangler 的 [vars] 没注入也能直接工作。
 // 要换入口只改这一行，或者在 Cloudflare 面板 / VARS 里覆盖。
-const DEFAULT_TRANSCODE_URL = 'https://tc.910168.xyz:8443';
+const DEFAULT_TRANSCODE_URL = 'https://tc.qwrt.910168.xyz:8443';
 
 const TRANSCODE_URL = (process.env.TRANSCODE_URL || DEFAULT_TRANSCODE_URL).replace(/\/$/, '');
 const PROFILE = process.env.TRANSCODE_PROFILE || '1m';
