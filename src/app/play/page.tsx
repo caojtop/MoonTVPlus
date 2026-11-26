@@ -5198,11 +5198,11 @@ function PlayPageClient() {
     setExternalPlayerAdBlock(!externalPlayerAdBlock);
   };
 
-    // ---------------- 省流转码 ----------------
+  // ---------------- 省流转码 ----------------
   const transcodeActive = videoUrl.includes('/api/tc?');
   const transcodeOriginalRef = useRef<string | null>(null);
+  const transcodeT0Ref = useRef(0);
 
-  // 取「未经代理包装」的真地址：detail 里的这一集就是原始地址
   const rawEpisodeUrl = (() => {
     const ep = detail?.episodes?.[currentEpisodeIndex];
     if (ep && /^https?:\/\//i.test(ep)) return ep;
@@ -5210,18 +5210,38 @@ function PlayPageClient() {
     return '';
   })();
 
-  const handleTranscodeSwitch = (next: string) => {
-    const t = Number(artPlayerRef.current?.currentTime) || 0;
-    resumeTimeRef.current = t > 1 ? t : null;
-    if (!transcodeActive) {
-      transcodeOriginalRef.current = videoUrl; // 记住原地址，用于切回
-      setVideoUrl(next);
+  const handleTranscodeSwitch = async (next: string) => {
+    const player = artPlayerRef.current;
+    const cur = Number(player?.currentTime) || 0;
+
+    if (next.includes('/api/tc?')) {
+      const t0 = Math.floor(cur);
+      const target = t0 > 0 ? next.replace('/api/tc?', `/api/tc?t0=${t0}&`) : next;
+      console.log('[TC] switch to transcode', { cur, t0, target });
+
+      transcodeT0Ref.current = t0;
+      transcodeOriginalRef.current = videoUrl;
+      resumeTimeRef.current = null;
+
+      try {
+        const res = await fetch(target, { cache: 'no-store' });
+        if (!res.ok && !res.redirected) throw new Error('gateway');
+      } catch (e) {
+        console.warn('[TC] warmup failed', e);
+        return;
+      }
+      setVideoUrl(target);
       return;
     }
+
+    const abs = transcodeT0Ref.current + cur;
+    console.log('[TC] switch back to original', { cur, offset: transcodeT0Ref.current, abs });
+    resumeTimeRef.current = abs > 1 ? abs : null;
+    transcodeT0Ref.current = 0;
     setVideoUrl(transcodeOriginalRef.current || next);
-    transcodeOriginalRef.current = null;
   };
   // -------------------------------------------
+
   // Wake Lock 相关函数
   const requestWakeLock = async () => {
     try {
